@@ -1,45 +1,111 @@
-1. Build binaries
-   * `cd src ; make`
-   ( you should have mysql_config available in $PATH)
+# TPC-C Benchmark for SQLite and Turso
 
-2. Load data
-   * create database
-     `mysqladmin create tpcc1000`
-   * create tables
-     `mysql tpcc1000 < create_table.sql`
-   * create indexes and FK ( this step can be done after loading data)
-     `mysql tpcc1000 < add_fkey_idx.sql`
-   * populate data
-     - simple step
-       `tpcc_load -h127.0.0.1 -d tpcc1000 -u root -p "" -w 1000`
-                 |hostname:port| |dbname| |user| |password| |WAREHOUSES|
-       ref. tpcc_load --help for all options
-     - load data in parallel 
-       check load.sh script
+A TPC-C benchmark harness adapted for SQLite-compatible databases. Supports both
+system SQLite3 and [Turso](https://github.com/tursodatabase/turso) (a SQLite
+rewrite in Rust), with a comparison script that runs both back-to-back and
+generates a report.
 
-3. Start benchmark
-   * `./tpcc_start -h127.0.0.1 -P3306 -dtpcc1000 -uroot -w1000 -c32 -r10 -l10800`
-   * |hostname| |port| |dbname| |user| |WAREHOUSES| |CONNECTIONS| |WARMUP TIME| |BENCHMARK TIME|
-   * ref. tpcc_start --help for all options 
+## Quick Start
 
-Output
-===================================
+Run the full comparison benchmark (clones turso automatically on first run):
 
-With the defined interval (-i option), the tool will produce the following output:
+```bash
+./run_bench.sh
+```
+
+This will:
+1. Clone turso into `tmp-turso/` (if not present)
+2. Build turso's sqlite3 library (release mode)
+3. Build both turso and sqlite3 versions of the benchmark
+4. Load TPC-C data and run the benchmark for each
+5. Print a side-by-side comparison report
+
+### Options
+
+```
+./run_bench.sh [warehouses] [connections] [warmup] [measure] [interval]
+```
+
+| Argument    | Default | Description                          |
+|-------------|---------|--------------------------------------|
+| warehouses  | 1       | Number of TPC-C warehouses           |
+| connections | 1       | Number of concurrent threads         |
+| warmup      | 5       | Warmup period in seconds             |
+| measure     | 30      | Measurement period in seconds        |
+| interval    | 1       | Reporting interval in seconds        |
+
+Examples:
+
+```bash
+./run_bench.sh 1 1 5 30 1     # 1 warehouse, 1 thread, 30s measurement
+./run_bench.sh 4 4 10 60 5    # 4 warehouses, 4 threads, 60s measurement
+```
+
+Reports and logs are saved to `results/`.
+
+## Building Individually
+
+Build for turso (default):
+
+```bash
+cd src && make all
+```
+
+Build for system sqlite3:
+
+```bash
+cd src && make all BACKEND=sqlite
+```
+
+This produces separate binaries: `tpcc_load`/`tpcc_start` (turso) and
+`tpcc_load-sqlite`/`tpcc_start-sqlite` (system sqlite3). Each uses its own
+database file (`tpcc.db` vs `tpcc-sqlite.db`).
+
+## Running Manually
+
+```bash
+# Create schema
+sqlite3 tpcc.db < create_table_sqlite.sql
+sqlite3 tpcc.db < add_fkey_idx_sqlite.sql
+
+# Load data (1 warehouse)
+./tpcc_load -w 1
+
+# Run benchmark
+./tpcc_start -w 1 -c 1 -r 5 -l 30 -i 1
+```
+
+### tpcc_start options
+
+| Flag | Description                      |
+|------|----------------------------------|
+| -w   | Number of warehouses             |
+| -c   | Number of database connections   |
+| -r   | Ramp-up (warmup) time in seconds |
+| -l   | Measurement time in seconds      |
+| -i   | Report interval in seconds       |
+| -t   | Max transactions (optional)      |
+
+## Output
+
+Per-interval lines during measurement:
+
 ```
   10, trx: 12920, 95%: 9.483, 99%: 18.738, max_rt: 213.169, 12919|98.778, 1292|101.096, 1293|443.955, 1293|670.842
-  20, trx: 12666, 95%: 7.074, 99%: 15.578, max_rt: 53.733, 12668|50.420, 1267|35.846, 1266|58.292, 1267|37.421
-  30, trx: 13269, 95%: 6.806, 99%: 13.126, max_rt: 41.425, 13267|27.968, 1327|32.242, 1327|40.529, 1327|29.580
-  40, trx: 12721, 95%: 7.265, 99%: 15.223, max_rt: 60.368, 12721|42.837, 1271|34.567, 1272|64.284, 1272|22.947
-  50, trx: 12573, 95%: 7.185, 99%: 14.624, max_rt: 48.607, 12573|45.345, 1258|41.104, 1258|54.022, 1257|26.626
 ```
 
-Where: 
-* 10 - the seconds from the start of the benchmark
-* trx: 12920 - New Order transactions executed during the gived interval (in this case, for the previous 10 sec). Basically this is the throughput per interval. The more the better
-* 95%: 9.483: - The 95% Response time of New Order transactions per given interval. In this case it is 9.483 sec
-* 99%: 18.738: - The 99% Response time of New Order transactions per given interval. In this case it is 18.738 sec
-* max_rt: 213.169: - The Max Response time of New Order transactions per given interval. In this case it is 213.169 sec
-* the rest: `12919|98.778, 1292|101.096, 1293|443.955, 1293|670.842` is throughput and max response time for the other kind of transactions and can be ignored
+| Field          | Meaning                                              |
+|----------------|------------------------------------------------------|
+| 10             | Seconds elapsed since measurement start              |
+| trx: 12920     | New-Order transactions in this interval              |
+| 95%: 9.483     | 95th percentile response time (ms) for New-Order     |
+| 99%: 18.738    | 99th percentile response time (ms) for New-Order     |
+| max_rt: 213.169| Max response time (ms) for New-Order                 |
+| remaining      | Throughput and max RT for Payment, Order-Status, Delivery, Stock-Level |
 
+## Prerequisites
 
+- C compiler (gcc/clang)
+- System sqlite3 library and CLI (`libsqlite3-dev`, `sqlite3`)
+- Rust toolchain (for building turso)
+- Git (for cloning turso on first run)
