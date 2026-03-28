@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <fcntl.h>
 
 #include <sqlite3.h>
@@ -151,7 +152,7 @@ main(argc, argv)
 
     /* EXEC SQL WHENEVER SQLERROR GOTO Error_SqlCall; */
 
-    sqlite3_open("/mnt/pmem_emul/tpcc.db", &sqlite);
+    sqlite3_open(DB_PATH, &sqlite);
     if(!sqlite) {
 	    printf("%s: Failed to open DB\n", __func__);
     }

@@ -1,2 +1,9 @@
 tpcc.db
 *cscope*
+*.db
+*.db-wal
+*.db-shm
+/results/*.log
+/results/*.txt
+tpcc_*
+tmp-turso

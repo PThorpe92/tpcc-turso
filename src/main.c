@@ -363,7 +363,7 @@ int main( int argc, char *argv[] )
   }
 
   if (sb_percentile_init(&local_percentile, 100000, 1.0, 1e13))
-    return NULL;
+    return 1;
 
   /* set up threads */
 
@@ -413,10 +413,8 @@ int main( int argc, char *argv[] )
 #endif
 
   counting_on = 1;
-  /* wait signal */
-  /*
+  /* wait for measurement period */
   for(i = 0; i < (measure_time / PRINT_INTERVAL); i++ ) {
-  //while (activate_transaction) {	  
 #ifndef _SLEEP_ONLY_
     pause();
 #else
@@ -424,7 +422,6 @@ int main( int argc, char *argv[] )
     alarm_dummy();
 #endif
   }
-  */
   counting_on = 0;
 
 
@@ -669,7 +666,7 @@ int thread_main (thread_arg* arg)
   
   /* exec sql connect :connect_string; */
   printf("%s: opening db, thread id = %lu\n", __func__, pthread_self());
-  sqlite3_open("/mnt/pmem_emul/tpcc.db", &sqlite3_db);
+  sqlite3_open(DB_PATH, &sqlite3_db);
   printf("%s: opened db, thread id = %lu\n", __func__, pthread_self());
 
   sqlite3_exec(sqlite3_db, "PRAGMA journal_mode = WAL;", 0, 0, 0);
@@ -755,8 +752,8 @@ int thread_main (thread_arg* arg)
 
     time_start = clock();
     
-  for (i = 0; i < num_trans; i++) {
-  
+  for (i = 0; (num_trans == 0 || i < num_trans) && activate_transaction; i++) {
+
 	  if( sqlite3_exec(ctx[t_num], "BEGIN TRANSACTION;", NULL, NULL, NULL) != SQLITE_OK) goto sqlerr;
 
 	  r = driver(t_num);
@@ -773,7 +770,8 @@ int thread_main (thread_arg* arg)
 
   
   for(i=0;i<40;i++){
-      sqlite3_reset(stmt[t_num][i]);
+      if(stmt[t_num][i])
+          sqlite3_reset(stmt[t_num][i]);
   }
 
   /* EXEC SQL DISCONNECT; */
