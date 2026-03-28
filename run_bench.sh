@@ -8,6 +8,9 @@ usage() {
     echo "  then prints a comparison report."
     echo
     echo "  Defaults: 1 warehouse, 1 connection, 5s warmup, 30s measure, 1s interval"
+    echo
+    echo "  Can run standalone (clones turso automatically) or inside the turso repo"
+    echo "  at e.g. perf/tpc-c/ (detects and uses the parent turso tree)."
     exit 1
 }
 
@@ -29,8 +32,36 @@ TURSO_LOG="$RESULTS_DIR/turso_${TIMESTAMP}.log"
 SQLITE_LOG="$RESULTS_DIR/sqlite_${TIMESTAMP}.log"
 REPORT="$RESULTS_DIR/report_${TIMESTAMP}.txt"
 
-TURSO_REPO="git@github.com:tursodatabase/turso.git"
-MAKE="make -C src"
+# ── Locate turso root ────────────────────────────────────────────────────────
+# Check if we're inside a turso repo by looking for the sqlite3 C API header
+# in ancestor directories (e.g. we live at turso/perf/tpc-c/).
+
+TURSO_ROOT=""
+dir="$SCRIPT_DIR"
+while [ "$dir" != "/" ]; do
+    dir="$(dirname "$dir")"
+    if [ -f "$dir/sqlite3/include/sqlite3.h" ] && [ -f "$dir/Cargo.toml" ]; then
+        # Verify it's actually turso by checking for the turso_sqlite3 crate
+        if grep -q 'turso_sqlite3' "$dir/Cargo.toml" 2>/dev/null; then
+            TURSO_ROOT="$dir"
+            break
+        fi
+    fi
+done
+
+if [ -n "$TURSO_ROOT" ]; then
+    echo "==> Detected turso repo at $TURSO_ROOT"
+else
+    # Standalone mode: clone into tmp-turso if needed
+    TURSO_ROOT="$SCRIPT_DIR/tmp-turso"
+    if [ ! -d "$TURSO_ROOT" ]; then
+        echo "==> Cloning turso into tmp-turso..."
+        git clone git@github.com:tursodatabase/turso.git "$TURSO_ROOT"
+    fi
+    echo "==> Using turso at $TURSO_ROOT"
+fi
+
+MAKE="make -C src TURSO_ROOT=$TURSO_ROOT"
 
 create_db() {
     local dbfile="$1"
@@ -39,17 +70,10 @@ create_db() {
     sqlite3 "$dbfile" < add_fkey_idx_sqlite.sql
 }
 
-# ── Clone turso if needed ────────────────────────────────────────────────────
-
-if [ ! -d tmp-turso ]; then
-    echo "==> Cloning turso into tmp-turso..."
-    git clone "$TURSO_REPO" tmp-turso
-fi
-
 # ── Build both sets of binaries ──────────────────────────────────────────────
 
 echo "==> Building turso sqlite3 library (release)..."
-(cd tmp-turso && cargo build -p turso_sqlite3 --release --quiet)
+(cd "$TURSO_ROOT" && cargo build -p turso_sqlite3 --release --quiet)
 
 echo "==> Building tpcc (turso)..."
 $MAKE clean -s
@@ -137,6 +161,7 @@ cat <<EOF
                         TPC-C Benchmark Comparison Report
 ================================================================================
 Date:         $(date)
+Turso:        $TURSO_ROOT
 Warehouses:   $WAREHOUSES
 Connections:  $CONNECTIONS
 Warmup:       ${WARMUP}s

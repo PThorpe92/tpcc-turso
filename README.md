@@ -7,18 +7,27 @@ generates a report.
 
 ## Quick Start
 
-Run the full comparison benchmark (clones turso automatically on first run):
+Run the full comparison benchmark:
 
 ```bash
 ./run_bench.sh
 ```
 
-This will:
-1. Clone turso into `tmp-turso/` (if not present)
-2. Build turso's sqlite3 library (release mode)
-3. Build both turso and sqlite3 versions of the benchmark
-4. Load TPC-C data and run the benchmark for each
-5. Print a side-by-side comparison report
+The script auto-detects how to find turso:
+
+- **Inside the turso repo** (e.g. at `perf/tpc-c/`): uses the parent turso tree directly.
+- **Standalone**: clones turso into `tmp-turso/` on first run.
+
+You can also override the turso root explicitly via the Makefile:
+```bash
+make -C src all TURSO_ROOT=/path/to/turso
+```
+
+The script will:
+1. Build turso's sqlite3 library (release mode)
+2. Build both turso and sqlite3 versions of the benchmark
+3. Load TPC-C data and run the benchmark for each
+4. Print a side-by-side comparison report
 
 ### Options
 
@@ -45,10 +54,11 @@ Reports and logs are saved to `results/`.
 
 ## Building Individually
 
-Build for turso (default):
+Build for turso (default, expects turso at `../tmp-turso` or override with `TURSO_ROOT`):
 
 ```bash
 cd src && make all
+cd src && make all TURSO_ROOT=/path/to/turso   # explicit path
 ```
 
 Build for system sqlite3:
