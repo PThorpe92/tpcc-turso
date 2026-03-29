@@ -33,32 +33,33 @@ SQLITE_LOG="$RESULTS_DIR/sqlite_${TIMESTAMP}.log"
 REPORT="$RESULTS_DIR/report_${TIMESTAMP}.txt"
 
 # ── Locate turso root ────────────────────────────────────────────────────────
-# Check if we're inside a turso repo by looking for the sqlite3 C API header
-# in ancestor directories (e.g. we live at turso/perf/tpc-c/).
+# Priority: 1) TURSO_ROOT env var  2) walk up to find turso repo  3) clone
 
-TURSO_ROOT=""
-dir="$SCRIPT_DIR"
-while [ "$dir" != "/" ]; do
-    dir="$(dirname "$dir")"
-    if [ -f "$dir/sqlite3/include/sqlite3.h" ] && [ -f "$dir/Cargo.toml" ]; then
-        # Verify it's actually turso by checking for the turso_sqlite3 crate
-        if grep -q 'turso_sqlite3' "$dir/Cargo.toml" 2>/dev/null; then
-            TURSO_ROOT="$dir"
-            break
-        fi
-    fi
-done
-
-if [ -n "$TURSO_ROOT" ]; then
-    echo "==> Detected turso repo at $TURSO_ROOT"
+if [ -n "$TURSO_ROOT" ] && [ -f "$TURSO_ROOT/sqlite3/include/sqlite3.h" ]; then
+    echo "==> Using turso at $TURSO_ROOT (from environment)"
 else
-    # Standalone mode: clone into tmp-turso if needed
-    TURSO_ROOT="$SCRIPT_DIR/tmp-turso"
-    if [ ! -d "$TURSO_ROOT" ]; then
-        echo "==> Cloning turso into tmp-turso..."
-        git clone git@github.com:tursodatabase/turso.git "$TURSO_ROOT"
+    TURSO_ROOT=""
+    dir="$SCRIPT_DIR"
+    while [ "$dir" != "/" ]; do
+        dir="$(dirname "$dir")"
+        if [ -f "$dir/sqlite3/include/sqlite3.h" ] && [ -f "$dir/Cargo.toml" ]; then
+            if grep -q '"sqlite3"' "$dir/Cargo.toml" 2>/dev/null; then
+                TURSO_ROOT="$dir"
+                break
+            fi
+        fi
+    done
+
+    if [ -n "$TURSO_ROOT" ]; then
+        echo "==> Detected turso repo at $TURSO_ROOT"
+    else
+        TURSO_ROOT="$SCRIPT_DIR/tmp-turso"
+        if [ ! -d "$TURSO_ROOT" ]; then
+            echo "==> Cloning turso into tmp-turso..."
+            git clone git@github.com:tursodatabase/turso.git "$TURSO_ROOT"
+        fi
+        echo "==> Using turso at $TURSO_ROOT"
     fi
-    echo "==> Using turso at $TURSO_ROOT"
 fi
 
 MAKE="make -C src TURSO_ROOT=$TURSO_ROOT"

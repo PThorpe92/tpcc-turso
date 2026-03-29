@@ -7,3 +7,4 @@ tpcc.db
 /results/*.txt
 tpcc_*
 tmp-turso
+src/*.o
